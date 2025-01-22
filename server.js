@@ -21,6 +21,12 @@ mongoose
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  financeData: [{
+    month: { type: String, required: true },
+    income: { type: Number, required: true },
+    expenses: { type: Number, required: true },
+    savings: { type: Number, required: true }
+  }]
 });
 
 const User = mongoose.model('User', userSchema);
@@ -93,5 +99,57 @@ app.post('/login', async (req, res) => {
   }
 });
 
+// **Post Monthly Finance Data**
+app.post('/add-finance', async (req, res) => {
+  const { username, month, income, expenses, savings } = req.body;
+
+  if (!username || !month || income === undefined || expenses === undefined || savings === undefined) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ error: 'User not found.' });
+    }
+
+    // Check if the finance data for the given month already exists
+    const existingData = user.financeData.find(data => data.month === month);
+    if (existingData) {
+      return res.status(400).json({ error: 'Data for this month already exists.' });
+    }
+
+    // Add the new finance data to the user's financeData array
+    user.financeData.push({ month, income, expenses, savings });
+    await user.save();
+
+    res.status(201).json({ message: 'Finance data added successfully!' });
+  } catch (error) {
+    console.error('Error saving finance data:', error);
+    res.status(500).json({ error: 'Internal server error. Please try again later.' });
+  }
+});
+
+// **Get Finance Data**
+app.get('/getfinancedata', async (req, res) => {
+  const { username } = req.query; // Get username from query parameter
+
+  if (!username) {
+    return res.status(400).json({ error: 'Username is required.' });
+  }
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ error: 'User not found.' });
+    }
+
+    res.status(200).json(user.financeData); // Return finance data
+  } catch (error) {
+    console.error('Error fetching finance data:', error);
+    res.status(500).json({ error: 'Internal server error. Please try again later.' });
+  }
+});
+
 const PORT = 5000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`)); 
