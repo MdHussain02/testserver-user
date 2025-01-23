@@ -103,8 +103,8 @@ app.post('/login', async (req, res) => {
 app.post('/add-finance', async (req, res) => {
   const { username, month, income, expenses, savings } = req.body;
 
-  if (!username || !month || income === undefined || expenses === undefined || savings === undefined) {
-    return res.status(400).json({ error: 'All fields are required.' });
+  if (!username || !month || income === undefined || expenses === undefined) {
+    return res.status(400).json({ error: 'All fields are required except savings.' });
   }
 
   try {
@@ -119,8 +119,15 @@ app.post('/add-finance', async (req, res) => {
       return res.status(400).json({ error: 'Data for this month already exists.' });
     }
 
+    // If savings is 0, calculate savings as income - expenses
+    let calculatedSavings = savings;
+
+    if (savings === 0 || savings === undefined) {
+      calculatedSavings = income - expenses;
+    }
+
     // Add the new finance data to the user's financeData array
-    user.financeData.push({ month, income, expenses, savings });
+    user.financeData.push({ month, income, expenses, savings: calculatedSavings });
     await user.save();
 
     res.status(201).json({ message: 'Finance data added successfully!' });
@@ -147,6 +154,108 @@ app.get('/getfinancedata', async (req, res) => {
     res.status(200).json(user.financeData); // Return finance data
   } catch (error) {
     console.error('Error fetching finance data:', error);
+    res.status(500).json({ error: 'Internal server error. Please try again later.' });
+  }
+});
+
+// **Update Finance Data**
+app.put('/update-finance', async (req, res) => {
+  const { username, month, income, expenses, savings } = req.body;
+
+  if (!username || !month || income === undefined || expenses === undefined) {
+    return res.status(400).json({ error: 'All fields are required except savings.' });
+  }
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ error: 'User not found.' });
+    }
+
+    const financeData = user.financeData.find((data) => data.month === month);
+    if (!financeData) {
+      return res.status(400).json({ error: 'Data for this month not found.' });
+    }
+
+    // Recalculate savings if income or expenses have changed
+    let updatedSavings = savings;
+
+    if (savings === 0 || savings === undefined) {
+      updatedSavings = income - expenses;
+    }
+
+    // If either income or expenses has changed, recalculate savings
+    if (financeData.income !== income || financeData.expenses !== expenses) {
+      updatedSavings = income - expenses;
+    }
+
+    // Update the finance data
+    financeData.income = income;
+    financeData.expenses = expenses;
+    financeData.savings = updatedSavings;
+
+    await user.save();
+    res.status(200).json({ message: 'Finance data updated successfully!' });
+  } catch (error) {
+    console.error('Error updating finance data:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// **Delete Finance Data**
+app.delete('/delete-finance', async (req, res) => {
+  const { username, month } = req.body;
+
+  if (!username || !month) {
+    return res.status(400).json({ error: 'Username and month are required.' });
+  }
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ error: 'User not found.' });
+    }
+
+    user.financeData = user.financeData.filter((data) => data.month !== month);
+    await user.save();
+    res.status(200).json({ message: 'Finance data deleted successfully!' });
+  } catch (error) {
+    console.error('Error deleting finance data:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// Update password route
+app.put('/update-password', async (req, res) => {
+  const { username, oldPassword, newPassword } = req.body;
+
+  if (!username || !oldPassword || !newPassword) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+
+  try {
+    // Find the user by username
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ error: 'User not found.' });
+    }
+
+    // Compare the old password with the stored hashed password
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Old password is incorrect.' });
+    }
+
+    // Hash the new password
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update the password in the database
+    user.password = hashedNewPassword;
+    await user.save();
+
+    res.status(200).json({ message: 'Password updated successfully!' });
+  } catch (error) {
+    console.error('Error updating password:', error);
     res.status(500).json({ error: 'Internal server error. Please try again later.' });
   }
 });
